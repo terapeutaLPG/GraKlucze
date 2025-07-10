@@ -81,24 +81,55 @@ class WiFiMonitorService : Service() {
             .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
             .build()
         
+        // Jeśli agresywne powiadomienia są włączone, monitoruj wszystkie typy połączeń
+        val aggressiveRequest = if (preferencesManager.isAggressiveNotificationsEnabled) {
+            NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                .build()
+        } else null
+
         networkCallback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
                 super.onAvailable(network)
-                checkWiFiConnection()
+
+                if (preferencesManager.isAggressiveNotificationsEnabled) {
+                    // Tryb agresywny - sprawdź każde połączenie internetowe
+                    checkInternetConnection(network)
+                } else {
+                    // Normalny tryb - tylko Wi-Fi
+                    checkWiFiConnection()
+                }
             }
             
             override fun onLost(network: Network) {
                 super.onLost(network)
-                onWiFiDisconnected()
+
+                if (preferencesManager.isAggressiveNotificationsEnabled) {
+                    // Tryb agresywny - sprawdź utratę dowolnego połączenia
+                    onInternetDisconnected()
+                } else {
+                    // Normalny tryb - tylko Wi-Fi
+                    onWiFiDisconnected()
+                }
             }
         }
         
-        networkCallback?.let {
-            connectivityManager.registerNetworkCallback(request, it)
+        networkCallback?.let { callback ->
+            // Rejestruj odpowiedni callback w zależności od trybu
+            if (preferencesManager.isAggressiveNotificationsEnabled && aggressiveRequest != null) {
+                connectivityManager.registerNetworkCallback(aggressiveRequest, callback)
+            } else {
+                connectivityManager.registerNetworkCallback(request, callback)
+            }
         }
         
         // Sprawdź stan początkowy
-        checkWiFiConnection()
+        if (preferencesManager.isAggressiveNotificationsEnabled) {
+            checkCurrentInternetStatus()
+        } else {
+            checkWiFiConnection()
+        }
     }
     
     private fun checkWiFiConnection() {
@@ -215,5 +246,121 @@ class WiFiMonitorService : Service() {
 
         val notificationManager = getSystemService(NotificationManager::class.java)
         notificationManager.notify(KEYS_NOTIFICATION_ID + 1, notification)
+    }
+
+    // === FUNKCJE DLA TRYBU AGRESYWNEGO ===
+
+    private fun checkInternetConnection(network: Network) {
+        val networkCapabilities = connectivityManager.getNetworkCapabilities(network)
+        if (networkCapabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true &&
+            networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) {
+
+            // Mamy połączenie z internetem - automatycznie uruchom aplikację
+            launchAggressiveKeysCheck("Wykryto połączenie z internetem")
+        }
+    }
+
+    private fun onInternetDisconnected() {
+        // W trybie agresywnym każda utrata internetu może oznaczać wyjście z domu
+        sendAggressiveKeysReminder()
+    }
+
+    private fun checkCurrentInternetStatus() {
+        val activeNetwork = connectivityManager.activeNetwork
+        if (activeNetwork != null) {
+            val networkCapabilities = connectivityManager.getNetworkCapabilities(activeNetwork)
+            if (networkCapabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true &&
+                networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) {
+                // Już mamy połączenie - sprawdź czy to nowe
+                launchAggressiveKeysCheck("Aktywne połączenie z internetem")
+            }
+        }
+    }
+
+    private fun launchAggressiveKeysCheck(reason: String) {
+        val currentTime = System.currentTimeMillis()
+        val lastNotificationTime = preferencesManager.lastNotificationTime
+
+        // Sprawdź czy minęło wystarczająco czasu od ostatniego powiadomienia (skróć czas dla trybu agresywnego)
+        val aggressiveInterval = MIN_NOTIFICATION_INTERVAL / 2 // 2.5 minuty zamiast 5
+        if (currentTime - lastNotificationTime < aggressiveInterval) {
+            return
+        }
+
+        // Automatycznie uruchom aplikację z pytaniem o klucze
+        val intent = Intent(this, MainActivity::class.java).apply {
+            action = MainActivity.ACTION_SHOW_KEYS_CHECK
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra("aggressive_mode", true)
+            putExtra("trigger_reason", reason)
+        }
+
+        // Uruchom aplikację natychmiast
+        startActivity(intent)
+
+        // Odtwórz odpowiedni dźwięk
+        val currentSSID = getCurrentSSID()
+        if (preferencesManager.isHomeNetwork(currentSSID)) {
+            soundManager.playSoftReminder()
+        } else {
+            soundManager.playExitAlert()
+        }
+
+        // Wyślij także powiadomienie jako backup
+        sendAggressiveNotification(reason)
+
+        preferencesManager.lastNotificationTime = currentTime
+    }
+
+    private fun sendAggressiveKeysReminder() {
+        val currentTime = System.currentTimeMillis()
+        val lastNotificationTime = preferencesManager.lastNotificationTime
+
+        // Skróć interwał dla trybu agresywnego
+        val aggressiveInterval = MIN_NOTIFICATION_INTERVAL / 3 // 1.67 minuty
+        if (currentTime - lastNotificationTime < aggressiveInterval) {
+            return
+        }
+
+        // Automatycznie uruchom aplikację
+        val intent = Intent(this, MainActivity::class.java).apply {
+            action = MainActivity.ACTION_SHOW_KEYS_CHECK
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra("aggressive_mode", true)
+            putExtra("trigger_reason", "Utracono połączenie z internetem")
+        }
+
+        startActivity(intent)
+        soundManager.playExitAlert()
+
+        // Wyślij powiadomienie jako backup
+        sendAggressiveNotification("Utracono połączenie z internetem - sprawdź klucze!")
+
+        preferencesManager.lastNotificationTime = currentTime
+    }
+
+    private fun sendAggressiveNotification(reason: String) {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            action = MainActivity.ACTION_SHOW_KEYS_CHECK
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("⚡ MASZ KLUCZE? (Tryb agresywny)")
+            .setContentText(reason)
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+            .setVibrate(longArrayOf(0, 200, 100, 200, 100, 200))
+            .setDefaults(Notification.DEFAULT_SOUND)
+            .build()
+
+        val notificationManager = getSystemService(NotificationManager::class.java)
+        notificationManager.notify(KEYS_NOTIFICATION_ID + 2, notification)
     }
 }

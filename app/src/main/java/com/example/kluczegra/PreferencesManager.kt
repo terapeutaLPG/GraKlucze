@@ -12,6 +12,7 @@ class PreferencesManager(context: Context) {
         private const val KEY_HOME_SSID_2 = "home_ssid_2"
         private const val KEY_HOME_SSID_3 = "home_ssid_3"
         private const val KEY_MONITORING_ENABLED = "monitoring_enabled"
+        private const val KEY_AGGRESSIVE_NOTIFICATIONS = "aggressive_notifications"
         private const val KEY_WAS_CONNECTED = "was_connected"
         private const val KEY_LAST_NOTIFICATION_TIME = "last_notification_time"
         private const val KEY_LAST_CONNECTED_NETWORK = "last_connected_network"
@@ -38,6 +39,10 @@ class PreferencesManager(context: Context) {
     var isMonitoringEnabled: Boolean
         get() = prefs.getBoolean(KEY_MONITORING_ENABLED, false)
         set(value) = prefs.edit().putBoolean(KEY_MONITORING_ENABLED, value).apply()
+
+    var isAggressiveNotificationsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_AGGRESSIVE_NOTIFICATIONS, false)
+        set(value) = prefs.edit().putBoolean(KEY_AGGRESSIVE_NOTIFICATIONS, value).apply()
 
     var wasConnectedToHome: Boolean
         get() = prefs.getBoolean(KEY_WAS_CONNECTED, false)

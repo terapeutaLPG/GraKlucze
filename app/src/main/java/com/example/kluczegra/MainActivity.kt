@@ -140,6 +140,10 @@ class MainActivity : ComponentActivity() {
         val currentSSID = getCurrentSSID()
         val isConnectedToHome = preferencesManager.isHomeNetwork(currentSSID)
 
+        // Sprawdź czy to tryb agresywny i pobierz dodatkowe informacje
+        val isAggressiveMode = intent?.getBooleanExtra("aggressive_mode", false) ?: false
+        val triggerReason = intent?.getStringExtra("trigger_reason") ?: ""
+
         // Określ typ sytuacji i odtwórz odpowiedni dźwięk
         LaunchedEffect(Unit) {
             // Inicjalizuj SoundManager jeśli nie został zainicjalizowany
@@ -178,8 +182,43 @@ class MainActivity : ComponentActivity() {
             // Dodaj elastyczne miejsce na górze
             Spacer(modifier = Modifier.weight(1f))
 
+            // Dodatkowa informacja dla trybu agresywnego
+            if (isAggressiveMode && triggerReason.isNotEmpty()) {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isConnectedToHome)
+                            MaterialTheme.colorScheme.primaryContainer
+                        else
+                            MaterialTheme.colorScheme.errorContainer
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            text = "⚡ Tryb agresywny",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = if (isConnectedToHome)
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            else
+                                MaterialTheme.colorScheme.onErrorContainer
+                        )
+                        Text(
+                            text = triggerReason,
+                            fontSize = 12.sp,
+                            color = if (isConnectedToHome)
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            else
+                                MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    }
+                }
+            }
+
             Text(
-                text = "Czy masz klucze?",
+                text = if (isConnectedToHome) "Czy schowałeś klucze?" else "Czy masz klucze?",
                 fontSize = 32.sp,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
@@ -424,36 +463,74 @@ class MainActivity : ComponentActivity() {
 
             // Przełącznik monitorowania
             Card(modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("🔍 Monitorowanie aktywne", fontWeight = FontWeight.Medium)
-                        Text(
-                            "Otrzymuj powiadomienia gdy wyjdziesz z domu",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("🔍 Monitorowanie aktywne", fontWeight = FontWeight.Medium)
+                            Text(
+                                "Otrzymuj powiadomienia gdy wyjdziesz z domu",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Switch(
+                            checked = isMonitoring,
+                            onCheckedChange = { enabled ->
+                                isMonitoring = enabled
+                                preferencesManager.isMonitoringEnabled = enabled
+
+                                if (enabled && hasAllPermissions() && preferencesManager.getAllHomeNetworks().isNotEmpty()) {
+                                    startWiFiMonitoring()
+                                } else if (!enabled) {
+                                    stopWiFiMonitoring()
+                                }
+                            },
+                            enabled = hasAllPermissions() && preferencesManager.getAllHomeNetworks().isNotEmpty()
                         )
                     }
 
-                    Switch(
-                        checked = isMonitoring,
-                        onCheckedChange = { enabled ->
-                            isMonitoring = enabled
-                            preferencesManager.isMonitoringEnabled = enabled
+                    // Agresywne powiadomienia
+                    if (isMonitoring) {
+                        Spacer(modifier = Modifier.height(16.dp))
 
-                            if (enabled && hasAllPermissions() && preferencesManager.getAllHomeNetworks().isNotEmpty()) {
-                                startWiFiMonitoring()
-                            } else if (!enabled) {
-                                stopWiFiMonitoring()
+                        var isAggressiveEnabled by remember {
+                            mutableStateOf(preferencesManager.isAggressiveNotificationsEnabled)
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("⚡ Powiadomienia agresywne", fontWeight = FontWeight.Medium)
+                                Text(
+                                    "Automatyczne uruchamianie aplikacji przy dostępie do internetu",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
-                        },
-                        enabled = hasAllPermissions() && preferencesManager.getAllHomeNetworks().isNotEmpty()
-                    )
+
+                            Switch(
+                                checked = isAggressiveEnabled,
+                                onCheckedChange = { enabled ->
+                                    isAggressiveEnabled = enabled
+                                    preferencesManager.isAggressiveNotificationsEnabled = enabled
+
+                                    // Restart serwisu z nowymi ustawieniami
+                                    if (isMonitoring) {
+                                        stopWiFiMonitoring()
+                                        startWiFiMonitoring()
+                                    }
+                                }
+                            )
+                        }
+                    }
                 }
             }
 
