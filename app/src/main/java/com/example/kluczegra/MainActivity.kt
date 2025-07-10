@@ -16,6 +16,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
@@ -41,7 +43,6 @@ class MainActivity : ComponentActivity() {
     private var vibrator: Vibrator? = null
 
     companion object {
-        private val ALLOWED_NETWORKS = listOf("Igor", "Igor_5")
         const val ACTION_SHOW_KEYS_CHECK = "com.example.kluczegra.SHOW_KEYS_CHECK"
     }
 
@@ -101,7 +102,6 @@ class MainActivity : ComponentActivity() {
         // Sprawdź czy użytkownik właśnie połączył się z domową siecią
         LaunchedEffect(currentSSID) {
             if (preferencesManager.isHomeNetwork(currentSSID) &&
-                isAllowedNetwork(currentSSID) &&
                 currentScreen == AppScreen.MAIN &&
                 hasAllPermissions()) {
                 // Sprawdź czy to nowe połączenie
@@ -114,11 +114,7 @@ class MainActivity : ComponentActivity() {
 
         when (currentScreen) {
             AppScreen.MAIN -> {
-                if (!isAllowedNetwork(currentSSID)) {
-                    NetworkRestrictionScreen(currentSSID)
-                } else {
-                    MainScreen()
-                }
+                MainScreen()
             }
             AppScreen.KEYS_CHECK -> {
                 KeysCheckScreen(
@@ -155,10 +151,14 @@ class MainActivity : ComponentActivity() {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(24.dp),
+                .padding(24.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // Dodaj elastyczne miejsce na górze
+            Spacer(modifier = Modifier.weight(1f))
+
             Text(
                 text = "Czy masz klucze?",
                 fontSize = 32.sp,
@@ -201,6 +201,9 @@ class MainActivity : ComponentActivity() {
                     }
                 )
             }
+
+            // Dodaj elastyczne miejsce na dole
+            Spacer(modifier = Modifier.weight(1f))
         }
     }
 
@@ -250,10 +253,14 @@ class MainActivity : ComponentActivity() {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(24.dp),
+                .padding(24.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // Dodaj elastyczne miejsce na górze
+            Spacer(modifier = Modifier.weight(1f))
+
             Text(
                 text = "😊",
                 fontSize = 120.sp,
@@ -266,63 +273,9 @@ class MainActivity : ComponentActivity() {
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center
             )
-        }
-    }
 
-    @Composable
-    fun NetworkRestrictionScreen(currentSSID: String?) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = "🔒",
-                fontSize = 64.sp,
-                modifier = Modifier.padding(bottom = 16.dp)
-            )
-
-            Text(
-                text = "Dostęp ograniczony",
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center
-            )
-
-            Text(
-                text = "Ta aplikacja działa tylko w sieciach:",
-                fontSize = 16.sp,
-                modifier = Modifier.padding(top = 16.dp),
-                textAlign = TextAlign.Center
-            )
-
-            ALLOWED_NETWORKS.forEach { network ->
-                Text(
-                    text = "• $network",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
-
-            Text(
-                text = "Obecna sieć: ${currentSSID ?: "Brak połączenia"}",
-                fontSize = 14.sp,
-                modifier = Modifier.padding(top = 16.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Button(
-                onClick = {
-                    // Odśwież stan
-                    recreate()
-                },
-                modifier = Modifier.padding(top = 24.dp)
-            ) {
-                Text("Sprawdź ponownie")
-            }
+            // Dodaj elastyczne miejsce na dole
+            Spacer(modifier = Modifier.weight(1f))
         }
     }
 
@@ -340,7 +293,8 @@ class MainActivity : ComponentActivity() {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp),
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Nagłówek z ikoną klucza
@@ -416,7 +370,7 @@ class MainActivity : ComponentActivity() {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("🏠 Sieci domowe (max 3):", fontWeight = FontWeight.Medium)
                     Text(
-                        "Dozwolone sieci: ${ALLOWED_NETWORKS.joinToString(", ")}",
+                        "Dodaj dowolne sieci Wi-Fi jako domowe",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = 16.dp)
@@ -517,10 +471,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun isAllowedNetwork(ssid: String?): Boolean {
-        return ssid != null && ALLOWED_NETWORKS.contains(ssid)
-    }
-
     @Composable
     private fun getKeyStatus(currentSSID: String?, isMonitoring: Boolean, hasPermissions: Boolean): KeyStatus {
         return when {
@@ -539,15 +489,15 @@ class MainActivity : ComponentActivity() {
                 description = "Monitorowanie włączone, ale brak połączenia Wi-Fi",
                 color = Color(0xFFFF9800) // Pomarańczowy
             )
-            isAllowedNetwork(currentSSID) -> KeyStatus(
+            preferencesManager.isHomeNetwork(currentSSID) -> KeyStatus(
                 icon = "🟢",
                 description = "Połączono z domową siecią - wszystko OK",
                 color = MaterialTheme.colorScheme.primary
             )
             else -> KeyStatus(
-                icon = "🔴",
-                description = "Połączono z niedozwoloną siecią",
-                color = MaterialTheme.colorScheme.error
+                icon = "🟡",
+                description = "Połączono z siecią - skonfiguruj jako domową jeśli potrzeba",
+                color = Color(0xFFFF9800)
             )
         }
     }

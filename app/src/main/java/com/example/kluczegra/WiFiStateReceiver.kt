@@ -7,11 +7,6 @@ import android.net.wifi.WifiManager
 
 class WiFiStateReceiver : BroadcastReceiver() {
 
-    companion object {
-        // Dozwolone sieci
-        private val ALLOWED_NETWORKS = listOf("Igor", "Igor_5")
-    }
-
     override fun onReceive(context: Context, intent: Intent) {
         val preferencesManager = PreferencesManager(context)
 

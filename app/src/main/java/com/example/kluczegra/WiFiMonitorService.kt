@@ -26,9 +26,6 @@ class WiFiMonitorService : Service() {
         
         // Minimalne opóźnienie między powiadomieniami (5 minut)
         const val MIN_NOTIFICATION_INTERVAL = 5 * 60 * 1000L
-        
-        // Dozwolone sieci
-        private val ALLOWED_NETWORKS = listOf("Igor", "Igor_5")
     }
     
     override fun onCreate() {
@@ -108,8 +105,7 @@ class WiFiMonitorService : Service() {
         val currentSSID = getCurrentSSID()
         
         // Sprawdź czy to dozwolona sieć domowa
-        if (currentSSID != null && isAllowedNetwork(currentSSID) &&
-            preferencesManager.isHomeNetwork(currentSSID)) {
+        if (currentSSID != null && preferencesManager.isHomeNetwork(currentSSID)) {
             // Połączony z dozwoloną domową siecią
             preferencesManager.wasConnectedToHome = true
 
@@ -130,17 +126,12 @@ class WiFiMonitorService : Service() {
             // Sprawdź czy nie jest nadal połączony (może przełączył się na inną sieć)
             val currentSSID = getCurrentSSID()
             if (currentSSID == null || 
-                !preferencesManager.isHomeNetwork(currentSSID) ||
-                !isAllowedNetwork(currentSSID)) {
+                !preferencesManager.isHomeNetwork(currentSSID)) {
                 sendKeysReminder()
                 preferencesManager.wasConnectedToHome = false
                 preferencesManager.lastConnectedNetwork = ""
             }
         }
-    }
-    
-    private fun isAllowedNetwork(ssid: String): Boolean {
-        return ALLOWED_NETWORKS.contains(ssid)
     }
     
     private fun getCurrentSSID(): String? {
