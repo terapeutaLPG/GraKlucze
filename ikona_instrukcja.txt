@@ -1,0 +1,29 @@
+🔑 INSTRUKCJA ZMIANY IKONY APLIKACJI "ZapomianeKlucze"
+
+1. WYGENERUJ IKONY ONLINE:
+   - Idź na: https://icon.kitchen/
+   - Lub: https://romannurik.github.io/AndroidAssetStudio/icons-launcher.html
+   - Prześlij swój obraz z kluczami
+   - Pobierz wygenerowane ikony
+
+2. ZASTĄP PLIKI W FOLDERACH:
+   📁 mipmap-mdpi/ic_launcher.webp (48x48px)
+   📁 mipmap-hdpi/ic_launcher.webp (72x72px)
+   📁 mipmap-xhdpi/ic_launcher.webp (96x96px)
+   📁 mipmap-xxhdpi/ic_launcher.webp (144x144px)
+   📁 mipmap-xxxhdpi/ic_launcher.webp (192x192px)
+
+   I odpowiednie wersje _round.webp
+
+3. SKOMPILUJ APLIKACJĘ:
+   .\gradlew assembleDebug
+
+ALTERNATYWA - EMOJI IKONA:
+Możesz użyć prostej ikony z emoji 🔑 - napisz jeśli chcesz ją wygenerować automatycznie.
+
+SUGESTIE OBRAZÓW DLA IKONY:
+- 🔑 Klucze
+- 🏠🔑 Dom z kluczami
+- ❓🔑 Znak zapytania z kluczami
+- 📱🔑 Telefon z kluczami
+- 🚪🔑 Drzwi z kluczami

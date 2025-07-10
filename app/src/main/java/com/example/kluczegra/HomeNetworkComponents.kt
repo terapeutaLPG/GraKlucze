@@ -169,6 +169,11 @@ fun HomeNetworkField(
             Button(
                 onClick = {
                     preferencesManager.setHomeNetwork(index, networkSSID.trim())
+
+                    // Automatycznie wyślij testowe powiadomienie po zapisaniu sieci
+                    if (networkSSID.trim().isNotEmpty()) {
+                        sendTestNotificationForNetwork(context, networkSSID.trim())
+                    }
                 },
                 enabled = networkSSID.trim().isNotEmpty(),
                 modifier = Modifier.weight(1f)
@@ -268,5 +273,38 @@ private fun scanForNetworks(context: Context, onResult: (List<String>) -> Unit) 
     } catch (e: Exception) {
         // Inne błędy
         onResult(emptyList())
+    }
+}
+
+private fun sendTestNotificationForNetwork(context: Context, networkName: String) {
+    try {
+        val preferencesManager = PreferencesManager(context)
+
+        // Zapisz poprzedni czas powiadomienia i resetuj, aby test działał
+        val previousTime = preferencesManager.lastNotificationTime
+        preferencesManager.lastNotificationTime = 0L
+
+        // Symuluj połączenie z domową siecią
+        preferencesManager.wasConnectedToHome = true
+        preferencesManager.lastConnectedNetwork = networkName
+
+        // Uruchom usługę do wysłania powiadomienia
+        val serviceIntent = android.content.Intent(context, WiFiMonitorService::class.java).apply {
+            putExtra("test_network", networkName)
+        }
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            context.startForegroundService(serviceIntent)
+        } else {
+            context.startService(serviceIntent)
+        }
+
+        // Przywróć poprzedni czas po krótkiej chwili
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            preferencesManager.lastNotificationTime = previousTime
+        }, 3000)
+
+    } catch (e: Exception) {
+        // Nie można uruchomić usługi - może brakować uprawnień
     }
 }

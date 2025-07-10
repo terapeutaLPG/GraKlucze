@@ -294,6 +294,7 @@ class MainActivity : ComponentActivity() {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(16.dp)
+                .padding(bottom = 80.dp) // Dodatkowy padding na dole dla paska nawigacji
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
