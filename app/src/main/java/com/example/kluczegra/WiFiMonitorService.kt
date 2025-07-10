@@ -77,34 +77,33 @@ class WiFiMonitorService : Service() {
     }
     
     private fun startNetworkMonitoring() {
-        // Zawsze monitoruj wszystkie połączenia internetowe (nie tylko Wi-Fi)
-        val internetRequest = NetworkRequest.Builder()
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        // Monitoruj połączenia Wi-Fi dla zapisanych sieci domowych
+        val wifiRequest = NetworkRequest.Builder()
+            .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
             .build()
 
         networkCallback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
                 super.onAvailable(network)
 
-                // Przy każdym nowym połączeniu z internetem - uruchom pytanie o klucze
-                onInternetConnected(network)
+                // Sprawdź czy to jedna z zapisanych sieci domowych
+                checkForHomeNetworkConnection()
             }
             
             override fun onLost(network: Network) {
                 super.onLost(network)
 
-                // Przy utracie internetu - również sprawdź klucze (może wychodzisz z domu)
-                onInternetDisconnected()
+                // Sprawdź czy utracono połączenie z domową siecią
+                checkForHomeNetworkDisconnection()
             }
         }
         
         networkCallback?.let { callback ->
-            connectivityManager.registerNetworkCallback(internetRequest, callback)
+            connectivityManager.registerNetworkCallback(wifiRequest, callback)
         }
         
-        // Sprawdź stan początkowy - jeśli już mamy internet, uruchom sprawdzenie
-        checkCurrentInternetStatus()
+        // Sprawdź stan początkowy
+        checkForHomeNetworkConnection()
     }
     
     private fun checkWiFiConnection() {
@@ -404,5 +403,151 @@ class WiFiMonitorService : Service() {
 
         val notificationManager = getSystemService(NotificationManager::class.java)
         notificationManager.notify(KEYS_NOTIFICATION_ID + 2, notification)
+    }
+
+    // === GŁÓWNE FUNKCJE DLA ZAPISANYCH SIECI DOMOWYCH ===
+
+    private fun checkForHomeNetworkConnection() {
+        val homeNetworks = preferencesManager.getAllHomeNetworks()
+        if (homeNetworks.isEmpty()) return
+
+        val currentSSID = getCurrentSSID()
+
+        // Sprawdź czy połączono z jedną z zapisanych sieci domowych
+        if (currentSSID != null && preferencesManager.isHomeNetwork(currentSSID)) {
+            // Sprawdź czy to nowe połączenie (nie było wcześniej połączone z tą siecią)
+            if (preferencesManager.lastConnectedNetwork != currentSSID) {
+                // NOWE POŁĄCZENIE Z ZAPISANĄ SIECIĄ DOMOWĄ!
+                onHomeNetworkConnected(currentSSID)
+                preferencesManager.lastConnectedNetwork = currentSSID
+                preferencesManager.wasConnectedToHome = true
+            }
+        }
+    }
+
+    private fun checkForHomeNetworkDisconnection() {
+        val homeNetworks = preferencesManager.getAllHomeNetworks()
+        if (homeNetworks.isEmpty()) return
+
+        // Sprawdź czy był połączony z domową siecią
+        if (preferencesManager.wasConnectedToHome) {
+            val currentSSID = getCurrentSSID()
+
+            // Sprawdź czy nadal jest połączony z domową siecią
+            if (currentSSID == null || !preferencesManager.isHomeNetwork(currentSSID)) {
+                // UTRACONO POŁĄCZENIE Z DOMOWĄ SIECIĄ!
+                onHomeNetworkDisconnected()
+                preferencesManager.wasConnectedToHome = false
+                preferencesManager.lastConnectedNetwork = ""
+            }
+        }
+    }
+
+    private fun onHomeNetworkConnected(networkSSID: String) {
+        // Automatycznie uruchom aplikację z pytaniem o klucze
+        launchKeysCheckForHomeNetwork(networkSSID)
+    }
+
+    private fun onHomeNetworkDisconnected() {
+        // Gdy użytkownik opuszcza domową sieć - może wychodzić z domu
+        launchKeysCheckForExit()
+    }
+
+    private fun launchKeysCheckForHomeNetwork(networkSSID: String) {
+        // AUTOMATYCZNIE uruchom aplikację
+        val intent = Intent(this, MainActivity::class.java).apply {
+            action = MainActivity.ACTION_SHOW_KEYS_CHECK
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra("home_network_connected", true)
+            putExtra("network_name", networkSSID)
+        }
+
+        // Uruchom aplikację natychmiast
+        startActivity(intent)
+
+        // Odtwórz dźwięk
+        soundManager.playSoftReminder()
+
+        // Wyślij powiadomienie z ikoną klucza
+        sendHomeNetworkNotification(networkSSID)
+    }
+
+    private fun launchKeysCheckForExit() {
+        val currentTime = System.currentTimeMillis()
+        val lastNotificationTime = preferencesManager.lastNotificationTime
+
+        // Sprawdź interwał (3 minuty dla wyjścia z domu)
+        val exitInterval = 3 * 60 * 1000L
+        if (currentTime - lastNotificationTime < exitInterval) {
+            return
+        }
+
+        // AUTOMATYCZNIE uruchom aplikację
+        val intent = Intent(this, MainActivity::class.java).apply {
+            action = MainActivity.ACTION_SHOW_KEYS_CHECK
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra("home_network_disconnected", true)
+        }
+
+        // Uruchom aplikację natychmiast
+        startActivity(intent)
+
+        // Odtwórz dźwięk ostrzeżenia
+        soundManager.playExitAlert()
+
+        // Wyślij powiadomienie
+        sendExitNotification()
+
+        preferencesManager.lastNotificationTime = currentTime
+    }
+
+    private fun sendHomeNetworkNotification(networkSSID: String) {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            action = MainActivity.ACTION_SHOW_KEYS_CHECK
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("💡 Czy masz klucze?")
+            .setContentText("Połączono z siecią $networkSSID")
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+            .setVibrate(longArrayOf(0, 300, 200, 300, 200, 300))
+            .setDefaults(Notification.DEFAULT_SOUND)
+            .build()
+
+        val notificationManager = getSystemService(NotificationManager::class.java)
+        notificationManager.notify(KEYS_NOTIFICATION_ID + 10, notification)
+    }
+
+    private fun sendExitNotification() {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            action = MainActivity.ACTION_SHOW_KEYS_CHECK
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("🔑 Pamiętaj o kluczach!")
+            .setContentText("Opuściłeś domową sieć Wi-Fi. Masz klucze?")
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+            .setVibrate(longArrayOf(0, 500, 200, 500, 200, 500))
+            .setDefaults(Notification.DEFAULT_SOUND)
+            .build()
+
+        val notificationManager = getSystemService(NotificationManager::class.java)
+        notificationManager.notify(KEYS_NOTIFICATION_ID + 11, notification)
     }
 }

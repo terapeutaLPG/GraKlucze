@@ -143,6 +143,9 @@ class MainActivity : ComponentActivity() {
         // Sprawdź różne tryby uruchomienia aplikacji
         val isAggressiveMode = intent?.getBooleanExtra("aggressive_mode", false) ?: false
         val isAutoLaunched = intent?.getBooleanExtra("auto_launched", false) ?: false
+        val isHomeNetworkConnected = intent?.getBooleanExtra("home_network_connected", false) ?: false
+        val isHomeNetworkDisconnected = intent?.getBooleanExtra("home_network_disconnected", false) ?: false
+        val networkName = intent?.getStringExtra("network_name") ?: ""
         val triggerReason = intent?.getStringExtra("trigger_reason") ?: ""
 
         // Określ typ sytuacji i odtwórz odpowiedni dźwięk
@@ -152,12 +155,11 @@ class MainActivity : ComponentActivity() {
                 soundManager = SoundManager(this@MainActivity)
             }
 
-            if (isConnectedToHome) {
-                // Powrót do domu - łagodny dźwięk przypomnienia
-                soundManager.playSoftReminder()
-            } else {
-                // Wyjście z domu - ostrzegawczy dźwięk
-                soundManager.playExitAlert()
+            when {
+                isHomeNetworkConnected -> soundManager.playSoftReminder()
+                isHomeNetworkDisconnected -> soundManager.playExitAlert()
+                isConnectedToHome -> soundManager.playSoftReminder()
+                else -> soundManager.playExitAlert()
             }
         }
 
@@ -183,8 +185,54 @@ class MainActivity : ComponentActivity() {
             // Dodaj elastyczne miejsce na górze
             Spacer(modifier = Modifier.weight(1f))
 
-            // Dodatkowa informacja o automatycznym uruchomieniu
-            if ((isAggressiveMode || isAutoLaunched) && triggerReason.isNotEmpty()) {
+            // Wyświetl informacje o tym co wywołało pytanie o klucze
+            if (isHomeNetworkConnected && networkName.isNotEmpty()) {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            text = "🏠 Połączenie z domową siecią",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Text(
+                            text = "Wykryto połączenie z siecią: $networkName",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                }
+            } else if (isHomeNetworkDisconnected) {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            text = "🚪 Opuszczanie domu",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                        Text(
+                            text = "Rozłączono z domową siecią Wi-Fi",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    }
+                }
+            } else if ((isAggressiveMode || isAutoLaunched) && triggerReason.isNotEmpty()) {
                 Card(
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.tertiaryContainer
@@ -210,7 +258,12 @@ class MainActivity : ComponentActivity() {
             }
 
             Text(
-                text = if (isConnectedToHome) "Czy schowałeś klucze?" else "Czy masz klucze?",
+                text = when {
+                    isHomeNetworkConnected -> "Czy masz klucze?"
+                    isHomeNetworkDisconnected -> "Czy masz klucze?"
+                    isConnectedToHome -> "Czy schowałeś klucze?"
+                    else -> "Czy masz klucze?"
+                },
                 fontSize = 32.sp,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
