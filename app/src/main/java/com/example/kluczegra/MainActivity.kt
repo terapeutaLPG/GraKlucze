@@ -6,16 +6,23 @@ import android.content.pm.PackageManager
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Bundle
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -24,11 +31,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.content.getSystemService
 import com.example.kluczegra.ui.theme.KluczeGraTheme
+import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
 
     private lateinit var preferencesManager: PreferencesManager
+    private var vibrator: Vibrator? = null
 
     companion object {
         private val ALLOWED_NETWORKS = listOf("Igor", "Igor_5")
@@ -39,8 +49,9 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         val allGranted = permissions.values.all { it }
-        if (allGranted) {
-            checkLocationServices()
+        if (!allGranted) {
+            // Jeśli nie ma uprawnień, nie pokazuj dodatkowych ekranów
+            // Użytkownik może je przyznać z głównego ekranu
         }
     }
 
@@ -48,25 +59,198 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         preferencesManager = PreferencesManager(this)
 
+        // Inicjalizuj vibrator
+        vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val vibratorManager = getSystemService<VibratorManager>()
+            vibratorManager?.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            getSystemService<Vibrator>()
+        }
+
         setContent {
             KluczeGraTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    val currentSSID = getCurrentSSID()
-
-                    if (!isAllowedNetwork(currentSSID)) {
-                        NetworkRestrictionScreen(currentSSID)
-                    } else {
-                        MainScreen()
-                    }
+                    AppContent()
                 }
             }
         }
 
-        // Sprawdź uprawnienia przy starcie
-        checkPermissions()
+        // Sprawdź uprawnienia w tle, ale nie blokuj aplikacji
+        checkPermissionsInBackground()
+    }
+
+    @Composable
+    fun AppContent() {
+        var currentScreen by remember { mutableStateOf(AppScreen.MAIN) }
+        val currentSSID = getCurrentSSID()
+
+        // Sprawdź czy użytkownik właśnie połączył się z domową siecią
+        LaunchedEffect(currentSSID) {
+            if (isAllowedNetwork(currentSSID) && currentScreen == AppScreen.MAIN) {
+                // Automatycznie pokaż ekran sprawdzania kluczy
+                currentScreen = AppScreen.KEYS_CHECK
+            }
+        }
+
+        when (currentScreen) {
+            AppScreen.MAIN -> {
+                if (!isAllowedNetwork(currentSSID)) {
+                    NetworkRestrictionScreen(currentSSID)
+                } else {
+                    MainScreen()
+                }
+            }
+            AppScreen.KEYS_CHECK -> {
+                KeysCheckScreen(
+                    onKeySelected = {
+                        currentScreen = AppScreen.CONFIRMATION
+                    }
+                )
+            }
+            AppScreen.CONFIRMATION -> {
+                ConfirmationScreen(
+                    onComplete = {
+                        currentScreen = AppScreen.MAIN
+                    }
+                )
+            }
+        }
+    }
+
+    @Composable
+    fun KeysCheckScreen(onKeySelected: () -> Unit) {
+        var isVibrating by remember { mutableStateOf(true) }
+
+        // Wibracje co sekundę przez 20 sekund
+        LaunchedEffect(Unit) {
+            repeat(20) { // 20 sekund
+                if (isVibrating) {
+                    vibrate()
+                    delay(1000) // 1 sekunda
+                }
+            }
+            isVibrating = false
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "Czy masz klucze?",
+                fontSize = 32.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(bottom = 48.dp)
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                KeyButton(
+                    icon = "🔴",
+                    label = "Nie mam kluczy",
+                    backgroundColor = Color(0xFFFF5252),
+                    onClick = {
+                        isVibrating = false
+                        onKeySelected()
+                    }
+                )
+
+                KeyButton(
+                    icon = "🟡",
+                    label = "Nie jestem pewien",
+                    backgroundColor = Color(0xFFFFEB3B),
+                    onClick = {
+                        isVibrating = false
+                        onKeySelected()
+                    }
+                )
+
+                KeyButton(
+                    icon = "🟢",
+                    label = "Mam klucze",
+                    backgroundColor = Color(0xFF4CAF50),
+                    onClick = {
+                        isVibrating = false
+                        onKeySelected()
+                    }
+                )
+            }
+        }
+    }
+
+    @Composable
+    fun KeyButton(
+        icon: String,
+        label: String,
+        backgroundColor: Color,
+        onClick: () -> Unit
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(8.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(80.dp)
+                    .clip(CircleShape)
+                    .background(backgroundColor)
+                    .clickable { onClick() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = icon,
+                    fontSize = 40.sp
+                )
+            }
+
+            Text(
+                text = label,
+                fontSize = 12.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .padding(top = 8.dp)
+                    .width(100.dp)
+            )
+        }
+    }
+
+    @Composable
+    fun ConfirmationScreen(onComplete: () -> Unit) {
+        LaunchedEffect(Unit) {
+            delay(2000) // 2 sekundy
+            onComplete()
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "😊",
+                fontSize = 120.sp,
+                modifier = Modifier.padding(bottom = 24.dp)
+            )
+
+            Text(
+                text = "Dzięki za potwierdzenie!",
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+        }
     }
 
     @Composable
@@ -475,5 +659,42 @@ class MainActivity : ComponentActivity() {
         android.os.Handler(mainLooper).postDelayed({
             preferencesManager.lastNotificationTime = previousTime
         }, 2000)
+    }
+
+    enum class AppScreen {
+        MAIN,
+        KEYS_CHECK,
+        CONFIRMATION
+    }
+
+    private fun vibrate() {
+        vibrator?.let { v ->
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                v.vibrate(VibrationEffect.createOneShot(200, VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                @Suppress("DEPRECATION")
+                v.vibrate(200)
+            }
+        }
+    }
+
+    private fun checkPermissionsInBackground() {
+        val permissions = mutableListOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_WIFI_STATE,
+            Manifest.permission.ACCESS_NETWORK_STATE
+        )
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+
+        val missingPermissions = permissions.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+
+        if (missingPermissions.isNotEmpty()) {
+            permissionLauncher.launch(missingPermissions.toTypedArray())
+        }
     }
 }
