@@ -17,6 +17,7 @@ class WiFiMonitorService : Service() {
     private lateinit var connectivityManager: ConnectivityManager
     private lateinit var wifiManager: WifiManager
     private lateinit var preferencesManager: PreferencesManager
+    private lateinit var soundManager: SoundManager
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     
     companion object {
@@ -33,7 +34,8 @@ class WiFiMonitorService : Service() {
         connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
         preferencesManager = PreferencesManager(this)
-        
+        soundManager = SoundManager(this)
+
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, createForegroundNotification())
         startNetworkMonitoring()
@@ -46,6 +48,7 @@ class WiFiMonitorService : Service() {
         networkCallback?.let {
             connectivityManager.unregisterNetworkCallback(it)
         }
+        soundManager.release()
     }
     
     private fun createNotificationChannel() {
@@ -160,6 +163,9 @@ class WiFiMonitorService : Service() {
             return
         }
         
+        // Odtwórz dźwięk ostrzeżenia przy wyjściu z domu
+        soundManager.playExitAlert()
+
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
@@ -185,6 +191,9 @@ class WiFiMonitorService : Service() {
     }
 
     private fun sendConnectionNotification(networkName: String) {
+        // Odtwórz łagodny dźwięk przypomnienia przy powrocie do domu
+        soundManager.playSoftReminder()
+
         val intent = Intent(this, MainActivity::class.java).apply {
             action = MainActivity.ACTION_SHOW_KEYS_CHECK
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK

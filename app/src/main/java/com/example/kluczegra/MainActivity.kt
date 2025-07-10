@@ -40,6 +40,7 @@ import kotlinx.coroutines.delay
 class MainActivity : ComponentActivity() {
 
     private lateinit var preferencesManager: PreferencesManager
+    private lateinit var soundManager: SoundManager
     private var vibrator: Vibrator? = null
 
     companion object {
@@ -136,6 +137,24 @@ class MainActivity : ComponentActivity() {
     @Composable
     fun KeysCheckScreen(onKeySelected: () -> Unit) {
         var isVibrating by remember { mutableStateOf(true) }
+        val currentSSID = getCurrentSSID()
+        val isConnectedToHome = preferencesManager.isHomeNetwork(currentSSID)
+
+        // Określ typ sytuacji i odtwórz odpowiedni dźwięk
+        LaunchedEffect(Unit) {
+            // Inicjalizuj SoundManager jeśli nie został zainicjalizowany
+            if (!::soundManager.isInitialized) {
+                soundManager = SoundManager(this@MainActivity)
+            }
+
+            if (isConnectedToHome) {
+                // Powrót do domu - łagodny dźwięk przypomnienia
+                soundManager.playSoftReminder()
+            } else {
+                // Wyjście z domu - ostrzegawczy dźwięk
+                soundManager.playExitAlert()
+            }
+        }
 
         // Wibracje co sekundę przez 20 sekund
         LaunchedEffect(Unit) {
@@ -645,6 +664,13 @@ class MainActivity : ComponentActivity() {
 
         if (missingPermissions.isNotEmpty()) {
             permissionLauncher.launch(missingPermissions.toTypedArray())
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (::soundManager.isInitialized) {
+            soundManager.release()
         }
     }
 }
