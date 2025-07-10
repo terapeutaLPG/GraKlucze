@@ -1,0 +1,53 @@
+package com.example.kluczegra
+
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.net.wifi.WifiManager
+
+class WiFiStateReceiver : BroadcastReceiver() {
+
+    override fun onReceive(context: Context, intent: Intent) {
+        val preferencesManager = PreferencesManager(context)
+
+        // Sprawdź czy monitoring jest włączony
+        if (!preferencesManager.isMonitoringEnabled) {
+            return
+        }
+
+        when (intent.action) {
+            WifiManager.WIFI_STATE_CHANGED_ACTION -> {
+                val wifiState = intent.getIntExtra(WifiManager.EXTRA_WIFI_STATE, WifiManager.WIFI_STATE_UNKNOWN)
+
+                if (wifiState == WifiManager.WIFI_STATE_DISABLED) {
+                    // Wi-Fi zostało wyłączone - może oznaczać wyjście z domu
+                    handleWiFiDisconnection(context, preferencesManager)
+                }
+            }
+
+            WifiManager.NETWORK_STATE_CHANGED_ACTION -> {
+                // Obsługa zmian stanu sieci
+                val networkInfo = intent.getParcelableExtra<android.net.NetworkInfo>(WifiManager.EXTRA_NETWORK_INFO)
+
+                if (networkInfo != null && !networkInfo.isConnected) {
+                    handleWiFiDisconnection(context, preferencesManager)
+                }
+            }
+        }
+    }
+
+    private fun handleWiFiDisconnection(context: Context, preferencesManager: PreferencesManager) {
+        // Uruchom usługę, która sprawdzi czy to była domowa sieć
+        val serviceIntent = Intent(context, WiFiMonitorService::class.java)
+
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent)
+            } else {
+                context.startService(serviceIntent)
+            }
+        } catch (e: Exception) {
+            // Nie można uruchomić usługi w tle
+        }
+    }
+}
