@@ -53,7 +53,8 @@ class WiFiMonitorService : Service() {
     
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
+            // Kanał dla monitorowania w tle
+            val monitorChannel = NotificationChannel(
                 CHANNEL_ID,
                 "Monitorowanie Wi-Fi",
                 NotificationManager.IMPORTANCE_LOW
@@ -62,8 +63,28 @@ class WiFiMonitorService : Service() {
                 setShowBadge(false)
             }
             
+            // Nowy kanał dla powiadomień o kluczach z własnym dźwiękiem
+            val keysChannel = NotificationChannel(
+                "klucze_channel",
+                "Powiadomienia o kluczach",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Powiadomienia o sprawdzeniu kluczy przy połączeniu z domem"
+                enableLights(true)
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 1000, 1000, 1000)
+                setSound(
+                    android.net.Uri.parse("android.resource://$packageName/${R.raw.klucz_dzwiek}"),
+                    android.media.AudioAttributes.Builder()
+                        .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION)
+                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
+            }
+
             val notificationManager = getSystemService(NotificationManager::class.java)
-            notificationManager.createNotificationChannel(channel)
+            notificationManager.createNotificationChannel(monitorChannel)
+            notificationManager.createNotificationChannel(keysChannel)
         }
     }
     
@@ -511,15 +532,16 @@ class WiFiMonitorService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("💡 Czy masz klucze?")
-            .setContentText("Połączono z siecią $networkSSID")
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+        // Nowe powiadomienie z własnym dźwiękiem i ikoną klucza
+        val notification = NotificationCompat.Builder(this, "klucze_channel")
+            .setContentTitle("🔑 Czy masz klucze?")
+            .setContentText("Kliknij, by potwierdzić, które masz ze sobą")
+            .setSmallIcon(R.drawable.ic_key)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)
-            .setVibrate(longArrayOf(0, 300, 200, 300, 200, 300))
-            .setDefaults(Notification.DEFAULT_SOUND)
+            .setVibrate(longArrayOf(0, 1000, 1000, 1000))
+            .setSound(android.net.Uri.parse("android.resource://$packageName/${R.raw.klucz_dzwiek}"))
             .build()
 
         val notificationManager = getSystemService(NotificationManager::class.java)
