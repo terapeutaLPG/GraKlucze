@@ -16,9 +16,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -27,6 +29,10 @@ import com.example.kluczegra.ui.theme.KluczeGraTheme
 class MainActivity : ComponentActivity() {
 
     private lateinit var preferencesManager: PreferencesManager
+
+    companion object {
+        private val ALLOWED_NETWORKS = listOf("Igor", "Igor_5")
+    }
 
     // Launcher do requestowania uprawnień
     private val permissionLauncher = registerForActivityResult(
@@ -48,13 +54,76 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    MainScreen()
+                    val currentSSID = getCurrentSSID()
+
+                    if (!isAllowedNetwork(currentSSID)) {
+                        NetworkRestrictionScreen(currentSSID)
+                    } else {
+                        MainScreen()
+                    }
                 }
             }
         }
 
         // Sprawdź uprawnienia przy starcie
         checkPermissions()
+    }
+
+    @Composable
+    fun NetworkRestrictionScreen(currentSSID: String?) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "🔒",
+                fontSize = 64.sp,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+
+            Text(
+                text = "Dostęp ograniczony",
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+
+            Text(
+                text = "Ta aplikacja działa tylko w sieciach:",
+                fontSize = 16.sp,
+                modifier = Modifier.padding(top = 16.dp),
+                textAlign = TextAlign.Center
+            )
+
+            ALLOWED_NETWORKS.forEach { network ->
+                Text(
+                    text = "• $network",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+
+            Text(
+                text = "Obecna sieć: ${currentSSID ?: "Brak połączenia"}",
+                fontSize = 14.sp,
+                modifier = Modifier.padding(top = 16.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Button(
+                onClick = {
+                    // Odśwież stan
+                    recreate()
+                },
+                modifier = Modifier.padding(top = 24.dp)
+            ) {
+                Text("Sprawdź ponownie")
+            }
+        }
     }
 
     @Composable
@@ -65,19 +134,34 @@ class MainActivity : ComponentActivity() {
         var currentSSID by remember { mutableStateOf(getCurrentSSID()) }
         var showPermissionWarning by remember { mutableStateOf(!hasAllPermissions()) }
 
+        // Stan klucza na podstawie aktualnej sytuacji
+        val keyStatus = getKeyStatus(currentSSID, isMonitoring, hasAllPermissions())
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Nagłówek
-            Text(
-                text = "🔑 Przypomnienie o Kluczach",
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.align(Alignment.CenterHorizontally)
-            )
+            // Nagłówek z ikoną klucza
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = keyStatus.icon,
+                    fontSize = 32.sp,
+                    modifier = Modifier.padding(end = 8.dp)
+                )
+                Text(
+                    text = "Przypomnienie o Kluczach",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
 
             // Ostrzeżenie o uprawnieniach
             if (showPermissionWarning) {
@@ -127,18 +211,25 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            // Konfiguracja domowej sieci
+            // Konfiguracja domowej sieci (automatycznie ustawiona na dozwolone sieci)
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("🏠 Domowa sieć Wi-Fi:", fontWeight = FontWeight.Medium)
 
                     OutlinedTextField(
                         value = homeSSID,
-                        onValueChange = { homeSSID = it },
+                        onValueChange = { newValue ->
+                            if (ALLOWED_NETWORKS.contains(newValue) || newValue.isEmpty()) {
+                                homeSSID = newValue
+                            }
+                        },
                         label = { Text("Nazwa sieci (SSID)") },
-                        placeholder = { Text("np. MojDom_WiFi") },
+                        placeholder = { Text("Igor lub Igor_5") },
                         modifier = Modifier.fillMaxWidth(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text)
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                        supportingText = {
+                            Text("Dozwolone sieci: ${ALLOWED_NETWORKS.joinToString(", ")}")
+                        }
                     )
 
                     Row(
@@ -149,9 +240,11 @@ class MainActivity : ComponentActivity() {
                     ) {
                         Button(
                             onClick = {
-                                homeSSID = currentSSID ?: ""
+                                if (isAllowedNetwork(currentSSID)) {
+                                    homeSSID = currentSSID ?: ""
+                                }
                             },
-                            enabled = currentSSID != null,
+                            enabled = currentSSID != null && isAllowedNetwork(currentSSID),
                             modifier = Modifier.weight(1f)
                         ) {
                             Text("Użyj aktualnej")
@@ -159,9 +252,11 @@ class MainActivity : ComponentActivity() {
 
                         Button(
                             onClick = {
-                                preferencesManager.homeSSID = homeSSID.trim()
+                                if (ALLOWED_NETWORKS.contains(homeSSID.trim())) {
+                                    preferencesManager.homeSSID = homeSSID.trim()
+                                }
                             },
-                            enabled = homeSSID.trim().isNotEmpty(),
+                            enabled = ALLOWED_NETWORKS.contains(homeSSID.trim()),
                             modifier = Modifier.weight(1f)
                         ) {
                             Text("Zapisz")
@@ -194,36 +289,35 @@ class MainActivity : ComponentActivity() {
                             isMonitoring = enabled
                             preferencesManager.isMonitoringEnabled = enabled
 
-                            if (enabled && hasAllPermissions() && homeSSID.trim().isNotEmpty()) {
+                            if (enabled && hasAllPermissions() && ALLOWED_NETWORKS.contains(homeSSID.trim())) {
                                 startWiFiMonitoring()
                             } else if (!enabled) {
                                 stopWiFiMonitoring()
                             }
                         },
-                        enabled = hasAllPermissions() && homeSSID.trim().isNotEmpty()
+                        enabled = hasAllPermissions() && ALLOWED_NETWORKS.contains(homeSSID.trim())
                     )
                 }
             }
 
-            // Status aplikacji
+            // Status aplikacji z ikoną klucza
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("ℹ️ Status aplikacji:", fontWeight = FontWeight.Medium)
-
-                    val statusText = when {
-                        !hasAllPermissions() -> "❌ Brak wymaganych uprawnień"
-                        homeSSID.trim().isEmpty() -> "❌ Nie ustawiono domowej sieci Wi-Fi"
-                        !isMonitoring -> "⏸️ Monitorowanie wyłączone"
-                        else -> "✅ Aplikacja gotowa do działania"
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    ) {
+                        Text(
+                            text = keyStatus.icon,
+                            fontSize = 24.sp,
+                            modifier = Modifier.padding(end = 8.dp)
+                        )
+                        Text("Status aplikacji:", fontWeight = FontWeight.Medium)
                     }
 
                     Text(
-                        text = statusText,
-                        color = when {
-                            statusText.contains("✅") -> MaterialTheme.colorScheme.primary
-                            statusText.contains("⏸️") -> MaterialTheme.colorScheme.onSurfaceVariant
-                            else -> MaterialTheme.colorScheme.error
-                        }
+                        text = keyStatus.description,
+                        color = keyStatus.color
                     )
                 }
             }
@@ -239,6 +333,47 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    private fun isAllowedNetwork(ssid: String?): Boolean {
+        return ssid != null && ALLOWED_NETWORKS.contains(ssid)
+    }
+
+    @Composable
+    private fun getKeyStatus(currentSSID: String?, isMonitoring: Boolean, hasPermissions: Boolean): KeyStatus {
+        return when {
+            !hasPermissions -> KeyStatus(
+                icon = "🔴",
+                description = "Brak wymaganych uprawnień",
+                color = MaterialTheme.colorScheme.error
+            )
+            !isMonitoring -> KeyStatus(
+                icon = "⚫",
+                description = "Monitorowanie wyłączone",
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            currentSSID == null -> KeyStatus(
+                icon = "🟡",
+                description = "Monitorowanie włączone, ale brak połączenia Wi-Fi",
+                color = Color(0xFFFF9800) // Pomarańczowy
+            )
+            isAllowedNetwork(currentSSID) -> KeyStatus(
+                icon = "🟢",
+                description = "Połączono z domową siecią - wszystko OK",
+                color = MaterialTheme.colorScheme.primary
+            )
+            else -> KeyStatus(
+                icon = "🔴",
+                description = "Połączono z niedozwoloną siecią",
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+    }
+
+    data class KeyStatus(
+        val icon: String,
+        val description: String,
+        val color: androidx.compose.ui.graphics.Color
+    )
 
     private fun getCurrentSSID(): String? {
         return try {

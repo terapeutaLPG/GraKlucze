@@ -7,6 +7,11 @@ import android.net.wifi.WifiManager
 
 class WiFiStateReceiver : BroadcastReceiver() {
 
+    companion object {
+        // Dozwolone sieci
+        private val ALLOWED_NETWORKS = listOf("Igor", "Igor_5")
+    }
+
     override fun onReceive(context: Context, intent: Intent) {
         val preferencesManager = PreferencesManager(context)
 
@@ -15,9 +20,16 @@ class WiFiStateReceiver : BroadcastReceiver() {
             return
         }
 
+        // Sprawdź czy domowa sieć jest dozwoloną siecią
+        val homeSSID = preferencesManager.homeSSID
+        if (homeSSID == null || !ALLOWED_NETWORKS.contains(homeSSID)) {
+            return
+        }
+
         when (intent.action) {
             WifiManager.WIFI_STATE_CHANGED_ACTION -> {
-                val wifiState = intent.getIntExtra(WifiManager.EXTRA_WIFI_STATE, WifiManager.WIFI_STATE_UNKNOWN)
+                val wifiState =
+                    intent.getIntExtra(WifiManager.EXTRA_WIFI_STATE, WifiManager.WIFI_STATE_UNKNOWN)
 
                 if (wifiState == WifiManager.WIFI_STATE_DISABLED) {
                     // Wi-Fi zostało wyłączone - może oznaczać wyjście z domu
@@ -27,7 +39,8 @@ class WiFiStateReceiver : BroadcastReceiver() {
 
             WifiManager.NETWORK_STATE_CHANGED_ACTION -> {
                 // Obsługa zmian stanu sieci
-                val networkInfo = intent.getParcelableExtra<android.net.NetworkInfo>(WifiManager.EXTRA_NETWORK_INFO)
+                val networkInfo =
+                    intent.getParcelableExtra<android.net.NetworkInfo>(WifiManager.EXTRA_NETWORK_INFO)
 
                 if (networkInfo != null && !networkInfo.isConnected) {
                     handleWiFiDisconnection(context, preferencesManager)
@@ -37,7 +50,7 @@ class WiFiStateReceiver : BroadcastReceiver() {
     }
 
     private fun handleWiFiDisconnection(context: Context, preferencesManager: PreferencesManager) {
-        // Uruchom usługę, która sprawdzi czy to była domowa sieć
+        // Uruchom usługę, która sprawdzi czy to była dozwolona domowa sieć
         val serviceIntent = Intent(context, WiFiMonitorService::class.java)
 
         try {
