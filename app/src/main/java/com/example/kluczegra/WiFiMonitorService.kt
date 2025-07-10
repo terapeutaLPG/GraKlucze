@@ -102,29 +102,39 @@ class WiFiMonitorService : Service() {
     }
     
     private fun checkWiFiConnection() {
-        val homeSSID = preferencesManager.homeSSID ?: return
+        val homeNetworks = preferencesManager.getAllHomeNetworks()
+        if (homeNetworks.isEmpty()) return
+
         val currentSSID = getCurrentSSID()
         
-        // Sprawdź czy to dozwolona sieć
-        if (currentSSID != null && isAllowedNetwork(currentSSID) && 
-            currentSSID.equals(homeSSID, ignoreCase = true)) {
+        // Sprawdź czy to dozwolona sieć domowa
+        if (currentSSID != null && isAllowedNetwork(currentSSID) &&
+            preferencesManager.isHomeNetwork(currentSSID)) {
             // Połączony z dozwoloną domową siecią
             preferencesManager.wasConnectedToHome = true
+
+            // Sprawdź czy to nowe połączenie
+            if (preferencesManager.lastConnectedNetwork != currentSSID) {
+                preferencesManager.lastConnectedNetwork = currentSSID
+                sendConnectionNotification(currentSSID)
+            }
         }
     }
     
     private fun onWiFiDisconnected() {
-        val homeSSID = preferencesManager.homeSSID ?: return
-        
+        val homeNetworks = preferencesManager.getAllHomeNetworks()
+        if (homeNetworks.isEmpty()) return
+
         // Sprawdź czy był połączony z domową siecią
         if (preferencesManager.wasConnectedToHome) {
             // Sprawdź czy nie jest nadal połączony (może przełączył się na inną sieć)
             val currentSSID = getCurrentSSID()
             if (currentSSID == null || 
-                !currentSSID.equals(homeSSID, ignoreCase = true) ||
+                !preferencesManager.isHomeNetwork(currentSSID) ||
                 !isAllowedNetwork(currentSSID)) {
                 sendKeysReminder()
                 preferencesManager.wasConnectedToHome = false
+                preferencesManager.lastConnectedNetwork = ""
             }
         }
     }
@@ -181,5 +191,29 @@ class WiFiMonitorService : Service() {
         notificationManager.notify(KEYS_NOTIFICATION_ID, notification)
         
         preferencesManager.lastNotificationTime = currentTime
+    }
+
+    private fun sendConnectionNotification(networkName: String) {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            action = MainActivity.ACTION_SHOW_KEYS_CHECK
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("💡 Czy masz klucze?")
+            .setContentText("Połączono z siecią $networkName. Sprawdź czy masz klucze!")
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+            .setVibrate(longArrayOf(0, 300, 200, 300))
+            .build()
+
+        val notificationManager = getSystemService(NotificationManager::class.java)
+        notificationManager.notify(KEYS_NOTIFICATION_ID + 1, notification)
     }
 }

@@ -20,9 +20,9 @@ class WiFiStateReceiver : BroadcastReceiver() {
             return
         }
 
-        // Sprawdź czy domowa sieć jest dozwoloną siecią
-        val homeSSID = preferencesManager.homeSSID
-        if (homeSSID == null || !ALLOWED_NETWORKS.contains(homeSSID)) {
+        // Sprawdź czy są zapisane sieci domowe
+        val homeNetworks = preferencesManager.getAllHomeNetworks()
+        if (homeNetworks.isEmpty()) {
             return
         }
 
@@ -34,6 +34,9 @@ class WiFiStateReceiver : BroadcastReceiver() {
                 if (wifiState == WifiManager.WIFI_STATE_DISABLED) {
                     // Wi-Fi zostało wyłączone - może oznaczać wyjście z domu
                     handleWiFiDisconnection(context, preferencesManager)
+                } else if (wifiState == WifiManager.WIFI_STATE_ENABLED) {
+                    // Wi-Fi zostało włączone - sprawdź połączenie
+                    handleWiFiConnection(context, preferencesManager)
                 }
             }
 
@@ -42,8 +45,14 @@ class WiFiStateReceiver : BroadcastReceiver() {
                 val networkInfo =
                     intent.getParcelableExtra<android.net.NetworkInfo>(WifiManager.EXTRA_NETWORK_INFO)
 
-                if (networkInfo != null && !networkInfo.isConnected) {
-                    handleWiFiDisconnection(context, preferencesManager)
+                if (networkInfo != null) {
+                    if (networkInfo.isConnected) {
+                        // Nowe połączenie - sprawdź czy to sieć domowa
+                        handleWiFiConnection(context, preferencesManager)
+                    } else {
+                        // Rozłączenie
+                        handleWiFiDisconnection(context, preferencesManager)
+                    }
                 }
             }
         }
@@ -51,6 +60,21 @@ class WiFiStateReceiver : BroadcastReceiver() {
 
     private fun handleWiFiDisconnection(context: Context, preferencesManager: PreferencesManager) {
         // Uruchom usługę, która sprawdzi czy to była dozwolona domowa sieć
+        val serviceIntent = Intent(context, WiFiMonitorService::class.java)
+
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent)
+            } else {
+                context.startService(serviceIntent)
+            }
+        } catch (e: Exception) {
+            // Nie można uruchomić usługi w tle
+        }
+    }
+
+    private fun handleWiFiConnection(context: Context, preferencesManager: PreferencesManager) {
+        // Uruchom usługę, która sprawdzi połączenie i wyśle powiadomienie jeśli potrzeba
         val serviceIntent = Intent(context, WiFiMonitorService::class.java)
 
         try {

@@ -42,6 +42,7 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         private val ALLOWED_NETWORKS = listOf("Igor", "Igor_5")
+        const val ACTION_SHOW_KEYS_CHECK = "com.example.kluczegra.SHOW_KEYS_CHECK"
     }
 
     // Launcher do requestowania uprawnień
@@ -85,14 +86,29 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     fun AppContent() {
-        var currentScreen by remember { mutableStateOf(AppScreen.MAIN) }
+        var currentScreen by remember { mutableStateOf(
+            if (intent?.action == ACTION_SHOW_KEYS_CHECK) AppScreen.KEYS_CHECK else AppScreen.MAIN
+        ) }
         val currentSSID = getCurrentSSID()
+
+        // Sprawdź czy aplikacja została uruchomiona przez powiadomienie
+        LaunchedEffect(intent?.action) {
+            if (intent?.action == ACTION_SHOW_KEYS_CHECK) {
+                currentScreen = AppScreen.KEYS_CHECK
+            }
+        }
 
         // Sprawdź czy użytkownik właśnie połączył się z domową siecią
         LaunchedEffect(currentSSID) {
-            if (isAllowedNetwork(currentSSID) && currentScreen == AppScreen.MAIN) {
-                // Automatycznie pokaż ekran sprawdzania kluczy
-                currentScreen = AppScreen.KEYS_CHECK
+            if (preferencesManager.isHomeNetwork(currentSSID) &&
+                isAllowedNetwork(currentSSID) &&
+                currentScreen == AppScreen.MAIN &&
+                hasAllPermissions()) {
+                // Sprawdź czy to nowe połączenie
+                if (preferencesManager.lastConnectedNetwork != currentSSID) {
+                    currentScreen = AppScreen.KEYS_CHECK
+                    preferencesManager.lastConnectedNetwork = currentSSID ?: ""
+                }
             }
         }
 
@@ -395,57 +411,40 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            // Konfiguracja domowej sieci (automatycznie ustawiona na dozwolone sieci)
+            // Konfiguracja 3 sieci domowych
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("🏠 Domowa sieć Wi-Fi:", fontWeight = FontWeight.Medium)
-
-                    OutlinedTextField(
-                        value = homeSSID,
-                        onValueChange = { newValue ->
-                            if (ALLOWED_NETWORKS.contains(newValue) || newValue.isEmpty()) {
-                                homeSSID = newValue
-                            }
-                        },
-                        label = { Text("Nazwa sieci (SSID)") },
-                        placeholder = { Text("Igor lub Igor_5") },
-                        modifier = Modifier.fillMaxWidth(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
-                        supportingText = {
-                            Text("Dozwolone sieci: ${ALLOWED_NETWORKS.joinToString(", ")}")
-                        }
+                    Text("🏠 Sieci domowe (max 3):", fontWeight = FontWeight.Medium)
+                    Text(
+                        "Dozwolone sieci: ${ALLOWED_NETWORKS.joinToString(", ")}",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 16.dp)
                     )
 
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Button(
-                            onClick = {
-                                if (isAllowedNetwork(currentSSID)) {
-                                    homeSSID = currentSSID ?: ""
-                                }
-                            },
-                            enabled = currentSSID != null && isAllowedNetwork(currentSSID),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("Użyj aktualnej")
-                        }
+                    // Dom 1
+                    HomeNetworkField(
+                        index = 1,
+                        label = "Dom 1",
+                        currentSSID = currentSSID,
+                        preferencesManager = preferencesManager
+                    )
 
-                        Button(
-                            onClick = {
-                                if (ALLOWED_NETWORKS.contains(homeSSID.trim())) {
-                                    preferencesManager.homeSSID = homeSSID.trim()
-                                }
-                            },
-                            enabled = ALLOWED_NETWORKS.contains(homeSSID.trim()),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("Zapisz")
-                        }
-                    }
+                    // Dom 2
+                    HomeNetworkField(
+                        index = 2,
+                        label = "Dom 2",
+                        currentSSID = currentSSID,
+                        preferencesManager = preferencesManager
+                    )
+
+                    // Dom 3
+                    HomeNetworkField(
+                        index = 3,
+                        label = "Dom 3",
+                        currentSSID = currentSSID,
+                        preferencesManager = preferencesManager
+                    )
                 }
             }
 
@@ -473,13 +472,13 @@ class MainActivity : ComponentActivity() {
                             isMonitoring = enabled
                             preferencesManager.isMonitoringEnabled = enabled
 
-                            if (enabled && hasAllPermissions() && ALLOWED_NETWORKS.contains(homeSSID.trim())) {
+                            if (enabled && hasAllPermissions() && preferencesManager.getAllHomeNetworks().isNotEmpty()) {
                                 startWiFiMonitoring()
                             } else if (!enabled) {
                                 stopWiFiMonitoring()
                             }
                         },
-                        enabled = hasAllPermissions() && ALLOWED_NETWORKS.contains(homeSSID.trim())
+                        enabled = hasAllPermissions() && preferencesManager.getAllHomeNetworks().isNotEmpty()
                     )
                 }
             }
