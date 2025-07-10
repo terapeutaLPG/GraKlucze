@@ -77,59 +77,34 @@ class WiFiMonitorService : Service() {
     }
     
     private fun startNetworkMonitoring() {
-        val request = NetworkRequest.Builder()
-            .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+        // Zawsze monitoruj wszystkie połączenia internetowe (nie tylko Wi-Fi)
+        val internetRequest = NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
             .build()
-        
-        // Jeśli agresywne powiadomienia są włączone, monitoruj wszystkie typy połączeń
-        val aggressiveRequest = if (preferencesManager.isAggressiveNotificationsEnabled) {
-            NetworkRequest.Builder()
-                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-                .addCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-                .build()
-        } else null
 
         networkCallback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
                 super.onAvailable(network)
 
-                if (preferencesManager.isAggressiveNotificationsEnabled) {
-                    // Tryb agresywny - sprawdź każde połączenie internetowe
-                    checkInternetConnection(network)
-                } else {
-                    // Normalny tryb - tylko Wi-Fi
-                    checkWiFiConnection()
-                }
+                // Przy każdym nowym połączeniu z internetem - uruchom pytanie o klucze
+                onInternetConnected(network)
             }
             
             override fun onLost(network: Network) {
                 super.onLost(network)
 
-                if (preferencesManager.isAggressiveNotificationsEnabled) {
-                    // Tryb agresywny - sprawdź utratę dowolnego połączenia
-                    onInternetDisconnected()
-                } else {
-                    // Normalny tryb - tylko Wi-Fi
-                    onWiFiDisconnected()
-                }
+                // Przy utracie internetu - również sprawdź klucze (może wychodzisz z domu)
+                onInternetDisconnected()
             }
         }
         
         networkCallback?.let { callback ->
-            // Rejestruj odpowiedni callback w zależności od trybu
-            if (preferencesManager.isAggressiveNotificationsEnabled && aggressiveRequest != null) {
-                connectivityManager.registerNetworkCallback(aggressiveRequest, callback)
-            } else {
-                connectivityManager.registerNetworkCallback(request, callback)
-            }
+            connectivityManager.registerNetworkCallback(internetRequest, callback)
         }
         
-        // Sprawdź stan początkowy
-        if (preferencesManager.isAggressiveNotificationsEnabled) {
-            checkCurrentInternetStatus()
-        } else {
-            checkWiFiConnection()
-        }
+        // Sprawdź stan początkowy - jeśli już mamy internet, uruchom sprawdzenie
+        checkCurrentInternetStatus()
     }
     
     private fun checkWiFiConnection() {
@@ -246,6 +221,73 @@ class WiFiMonitorService : Service() {
 
         val notificationManager = getSystemService(NotificationManager::class.java)
         notificationManager.notify(KEYS_NOTIFICATION_ID + 1, notification)
+    }
+
+    // === FUNKCJE DLA AUTOMATYCZNEGO URUCHAMIANIA PRZY INTERNECIE ===
+
+    private fun onInternetConnected(network: Network) {
+        val networkCapabilities = connectivityManager.getNetworkCapabilities(network)
+        if (networkCapabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true &&
+            networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) {
+
+            // Za każdym razem gdy mamy internet - automatycznie uruchom pytanie o klucze
+            launchKeysCheckAutomatically("Odzyskano połączenie z internetem")
+        }
+    }
+
+    private fun launchKeysCheckAutomatically(reason: String) {
+        val currentTime = System.currentTimeMillis()
+        val lastNotificationTime = preferencesManager.lastNotificationTime
+
+        // Krótszy interwał - 2 minuty między powiadomieniami
+        val interval = 2 * 60 * 1000L
+        if (currentTime - lastNotificationTime < interval) {
+            return
+        }
+
+        // AUTOMATYCZNIE uruchom aplikację z pytaniem o klucze
+        val intent = Intent(this, MainActivity::class.java).apply {
+            action = MainActivity.ACTION_SHOW_KEYS_CHECK
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra("auto_launched", true)
+            putExtra("trigger_reason", reason)
+        }
+
+        // Uruchom aplikację natychmiast
+        startActivity(intent)
+
+        // Odtwórz dźwięk
+        soundManager.playExitAlert()
+
+        // Wyślij powiadomienie z brzęczeniem
+        sendAutomaticKeysNotification(reason)
+
+        preferencesManager.lastNotificationTime = currentTime
+    }
+
+    private fun sendAutomaticKeysNotification(reason: String) {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            action = MainActivity.ACTION_SHOW_KEYS_CHECK
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("🔑 CZY MASZ KLUCZE?")
+            .setContentText("$reason - Sprawdź czy masz klucze!")
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+            .setVibrate(longArrayOf(0, 300, 200, 300, 200, 300)) // Intensywne wibracje
+            .setDefaults(Notification.DEFAULT_SOUND) // Dźwięk systemowy
+            .build()
+
+        val notificationManager = getSystemService(NotificationManager::class.java)
+        notificationManager.notify(KEYS_NOTIFICATION_ID + 3, notification)
     }
 
     // === FUNKCJE DLA TRYBU AGRESYWNEGO ===

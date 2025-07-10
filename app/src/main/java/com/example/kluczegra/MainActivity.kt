@@ -140,8 +140,9 @@ class MainActivity : ComponentActivity() {
         val currentSSID = getCurrentSSID()
         val isConnectedToHome = preferencesManager.isHomeNetwork(currentSSID)
 
-        // Sprawdź czy to tryb agresywny i pobierz dodatkowe informacje
+        // Sprawdź różne tryby uruchomienia aplikacji
         val isAggressiveMode = intent?.getBooleanExtra("aggressive_mode", false) ?: false
+        val isAutoLaunched = intent?.getBooleanExtra("auto_launched", false) ?: false
         val triggerReason = intent?.getStringExtra("trigger_reason") ?: ""
 
         // Określ typ sytuacji i odtwórz odpowiedni dźwięk
@@ -182,14 +183,11 @@ class MainActivity : ComponentActivity() {
             // Dodaj elastyczne miejsce na górze
             Spacer(modifier = Modifier.weight(1f))
 
-            // Dodatkowa informacja dla trybu agresywnego
-            if (isAggressiveMode && triggerReason.isNotEmpty()) {
+            // Dodatkowa informacja o automatycznym uruchomieniu
+            if ((isAggressiveMode || isAutoLaunched) && triggerReason.isNotEmpty()) {
                 Card(
                     colors = CardDefaults.cardColors(
-                        containerColor = if (isConnectedToHome)
-                            MaterialTheme.colorScheme.primaryContainer
-                        else
-                            MaterialTheme.colorScheme.errorContainer
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer
                     ),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -197,21 +195,15 @@ class MainActivity : ComponentActivity() {
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text(
-                            text = "⚡ Tryb agresywny",
+                            text = if (isAutoLaunched) "🌐 Automatyczne uruchomienie" else "⚡ Tryb agresywny",
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp,
-                            color = if (isConnectedToHome)
-                                MaterialTheme.colorScheme.onPrimaryContainer
-                            else
-                                MaterialTheme.colorScheme.onErrorContainer
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
                         )
                         Text(
                             text = triggerReason,
                             fontSize = 12.sp,
-                            color = if (isConnectedToHome)
-                                MaterialTheme.colorScheme.onPrimaryContainer
-                            else
-                                MaterialTheme.colorScheme.onErrorContainer
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
                         )
                     }
                 }
