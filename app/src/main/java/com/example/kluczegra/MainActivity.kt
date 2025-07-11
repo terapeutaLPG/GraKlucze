@@ -13,13 +13,22 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -36,6 +45,13 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import com.example.kluczegra.ui.theme.KluczeGraTheme
 import kotlinx.coroutines.delay
+
+enum class AppScreen {
+    MAIN,
+    KEYS_CHECK,
+    CONFIRMATION,
+    NOTIFICATION_SETTINGS
+}
 
 class MainActivity : ComponentActivity() {
 
@@ -115,7 +131,9 @@ class MainActivity : ComponentActivity() {
 
         when (currentScreen) {
             AppScreen.MAIN -> {
-                MainScreen()
+                MainScreen(
+                    onNavigateToNotifications = { currentScreen = AppScreen.NOTIFICATION_SETTINGS }
+                )
             }
             AppScreen.KEYS_CHECK -> {
                 KeysCheckScreen(
@@ -129,6 +147,11 @@ class MainActivity : ComponentActivity() {
                     onComplete = {
                         currentScreen = AppScreen.MAIN
                     }
+                )
+            }
+            AppScreen.NOTIFICATION_SETTINGS -> {
+                NotificationSettingsScreen(
+                    onNavigateBack = { currentScreen = AppScreen.MAIN }
                 )
             }
         }
@@ -258,12 +281,7 @@ class MainActivity : ComponentActivity() {
             }
 
             Text(
-                text = when {
-                    isHomeNetworkConnected -> "Czy masz klucze?"
-                    isHomeNetworkDisconnected -> "Czy masz klucze?"
-                    isConnectedToHome -> "Czy schowałeś klucze?"
-                    else -> "Czy masz klucze?"
-                },
+                text = preferencesManager.reminderText.ifEmpty { "Czy masz klucze?" },
                 fontSize = 32.sp,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
@@ -383,7 +401,7 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    fun MainScreen() {
+    fun MainScreen(onNavigateToNotifications: () -> Unit) {
         val context = LocalContext.current
         var homeSSID by remember { mutableStateOf(preferencesManager.homeSSID ?: "") }
         var isMonitoring by remember { mutableStateOf(preferencesManager.isMonitoringEnabled) }
@@ -610,6 +628,22 @@ class MainActivity : ComponentActivity() {
                     Text("🧪 Wyślij testowe powiadomienie")
                 }
             }
+
+            // Przycisk do ustawień powiadomień
+            Button(
+                onClick = onNavigateToNotifications,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.secondary
+                )
+            ) {
+                Icon(
+                    Icons.Default.Notifications,
+                    contentDescription = null,
+                    modifier = Modifier.padding(end = 8.dp)
+                )
+                Text("Ustawienia powiadomień")
+            }
         }
     }
 
@@ -752,12 +786,6 @@ class MainActivity : ComponentActivity() {
         }, 2000)
     }
 
-    enum class AppScreen {
-        MAIN,
-        KEYS_CHECK,
-        CONFIRMATION
-    }
-
     private fun vibrate() {
         vibrator?.let { v ->
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -793,6 +821,269 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
         if (::soundManager.isInitialized) {
             soundManager.release()
+        }
+    }
+
+    @Composable
+    fun NotificationSettingsScreen(onNavigateBack: () -> Unit) {
+        var reminderText by remember { mutableStateOf(preferencesManager.reminderText) }
+        var selectedIcon by remember { mutableStateOf(preferencesManager.reminderIcon) }
+        var showSnackbar by remember { mutableStateOf(false) }
+
+        val availableIcons = listOf("🔑", "📦", "🎒", "💼", "📱", "💻", "🔐", "🗝️")
+        val textSuggestions = listOf("Czy masz klucze?", "Czy masz portfel?", "Czy masz telefon?", "Czy masz laptop?", "Czy masz plecak?", "Czy masz torby?")
+
+        LaunchedEffect(showSnackbar) {
+            if (showSnackbar) {
+                delay(2000)
+                showSnackbar = false
+            }
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Nagłówek z przyciskiem powrotu
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onNavigateBack) {
+                    Icon(Icons.Default.ArrowBack, contentDescription = "Powrót")
+                }
+                Text(
+                    text = "Ustawienia przypomnienia",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.width(48.dp)) // Balansuje przycisk z lewej strony
+            }
+
+            // Wybór ikony powiadomienia
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Ikona powiadomienia",
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(availableIcons) { icon ->
+                            Box(
+                                modifier = Modifier
+                                    .size(60.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (icon == selectedIcon)
+                                            MaterialTheme.colorScheme.primary
+                                        else
+                                            MaterialTheme.colorScheme.surfaceVariant
+                                    )
+                                    .clickable { selectedIcon = icon },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = icon,
+                                    fontSize = 24.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Edycja tekstu przypomnienia
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Tekst przypomnienia",
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+
+                    OutlinedTextField(
+                        value = reminderText,
+                        onValueChange = { reminderText = it },
+                        label = { Text("Pytanie o przypomnienie") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+
+                    Text(
+                        text = "Sugerowane teksty:",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp, bottom = 8.dp)
+                    )
+
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(textSuggestions) { suggestion ->
+                            AssistChip(
+                                onClick = { reminderText = suggestion },
+                                label = { Text(suggestion, fontSize = 11.sp) }
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Podgląd
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Podgląd powiadomienia",
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = selectedIcon,
+                            fontSize = 24.sp,
+                            modifier = Modifier.padding(end = 12.dp)
+                        )
+                        Column {
+                            Text(
+                                text = "$selectedIcon $reminderText",
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Text(
+                                text = "Kliknij, by potwierdzić, które masz ze sobą",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Przycisk zapisz
+            Button(
+                onClick = {
+                    preferencesManager.reminderText = reminderText
+                    preferencesManager.reminderIcon = selectedIcon
+                    showSnackbar = true
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Zapisz ustawienia")
+            }
+
+            // Snackbar
+            if (showSnackbar) {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFF4CAF50)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Ustawienia zostały zapisane ✅",
+                        color = Color.White,
+                        modifier = Modifier.padding(16.dp),
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        }
+    }
+
+    @Composable
+    fun HomeNetworkField(
+        index: Int,
+        label: String,
+        currentSSID: String?,
+        preferencesManager: PreferencesManager
+    ) {
+        var ssidValue by remember { mutableStateOf(preferencesManager.getHomeNetwork(index)) }
+        var showSaved by remember { mutableStateOf(false) }
+
+        LaunchedEffect(showSaved) {
+            if (showSaved) {
+                delay(2000)
+                showSaved = false
+            }
+        }
+
+        Column(modifier = Modifier.padding(vertical = 8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = ssidValue,
+                    onValueChange = { ssidValue = it },
+                    label = { Text(label) },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true
+                )
+
+                if (!currentSSID.isNullOrEmpty()) {
+                    Button(
+                        onClick = { ssidValue = currentSSID },
+                        modifier = Modifier.padding(start = 8.dp),
+                        contentPadding = PaddingValues(8.dp)
+                    ) {
+                        Text("Użyj aktualnej", fontSize = 10.sp)
+                    }
+                }
+            }
+
+            if (!currentSSID.isNullOrEmpty()) {
+                Text(
+                    text = "Aktualna sieć: $currentSSID",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                Button(
+                    onClick = {
+                        preferencesManager.setHomeNetwork(index, ssidValue)
+                        showSaved = true
+                    },
+                    modifier = Modifier.padding(top = 8.dp)
+                ) {
+                    Text("Zapisz")
+                }
+            }
+
+            if (showSaved) {
+                Text(
+                    text = "Sieć została zapisana ✅",
+                    color = Color(0xFF4CAF50),
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
         }
     }
 }

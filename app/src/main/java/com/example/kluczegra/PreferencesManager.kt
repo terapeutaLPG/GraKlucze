@@ -16,6 +16,8 @@ class PreferencesManager(context: Context) {
         private const val KEY_WAS_CONNECTED = "was_connected"
         private const val KEY_LAST_NOTIFICATION_TIME = "last_notification_time"
         private const val KEY_LAST_CONNECTED_NETWORK = "last_connected_network"
+        private const val KEY_REMINDER_TEXT = "reminder_text"
+        private const val KEY_REMINDER_ICON = "reminder_icon"
     }
 
     // Stary homeSSID dla kompatybilności wstecznej
@@ -55,6 +57,14 @@ class PreferencesManager(context: Context) {
     var lastConnectedNetwork: String
         get() = prefs.getString(KEY_LAST_CONNECTED_NETWORK, "") ?: ""
         set(value) = prefs.edit().putString(KEY_LAST_CONNECTED_NETWORK, value).apply()
+
+    var reminderText: String
+        get() = prefs.getString(KEY_REMINDER_TEXT, "Czy masz klucze?") ?: "Czy masz klucze?"
+        set(value) = prefs.edit().putString(KEY_REMINDER_TEXT, value).apply()
+
+    var reminderIcon: String
+        get() = prefs.getString(KEY_REMINDER_ICON, "🔑") ?: "🔑"
+        set(value) = prefs.edit().putString(KEY_REMINDER_ICON, value).apply()
 
     // Pomocne funkcje
     fun getAllHomeNetworks(): List<String> {
